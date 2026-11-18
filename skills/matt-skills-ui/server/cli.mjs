@@ -5,10 +5,12 @@
 //   status | url | stop
 //   theme <swiss|terminal|transit|toybox|default>
 //   listen                               stream board messages for the main session (use with Monitor)
-//   ask "<question>" [--rec "<answer>"] [--options "a|b"] [--ref <ticket>]
+//   ask "<question>" [--rec "<answer>"] [--options "a|b"] [--ref <ticket>] [--session <id>]
+//   archive                              move every pending main-session question to history
+//   chat-reply                           UserPromptSubmit hook: the prompt on stdin answers the session's open questions
 // Common: --repo <dir> (default: cwd)
-import { spawn } from 'node:child_process';
-import { promises as fs, openSync } from 'node:fs';
+import { spawn, execFileSync } from 'node:child_process';
+import { promises as fs, openSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { repoDataDir, readJson, run, THEMES } from './lib/util.mjs';
@@ -17,10 +19,13 @@ import { readTheme, writeThemeOverride } from './lib/config.mjs';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
 const flag = k => { const i = argv.indexOf('--' + k); if (i < 0) return undefined; const v = argv[i + 1]; argv.splice(i, v && !v.startsWith('--') ? 2 : 1); return v && !v.startsWith('--') ? v : true; };
-const repo = path.resolve(String(flag('repo') || process.cwd()));
+// chat-reply is a hook: its repo and session come from the hook's JSON on stdin.
+const hookIn = argv[0] === 'chat-reply' ? (() => { try { return JSON.parse(readFileSync(0, 'utf8') || '{}'); } catch { return {}; } })() : null;
+const gitTop = dir => { try { return execFileSync('git', ['-C', dir, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim(); } catch { return dir; } };
+const repo = path.resolve(String(flag('repo') || (hookIn?.cwd ? gitTop(hookIn.cwd) : process.cwd())));
 const session = flag('session'), noOpen = flag('no-open'), port = flag('port'), host = flag('host');
 const rec = flag('rec'), options = flag('options'), ref = flag('ref');
-const COMMANDS = ['start', 'status', 'url', 'stop', 'theme', 'listen', 'ask', 'open'];
+const COMMANDS = ['start', 'status', 'url', 'stop', 'theme', 'listen', 'ask', 'open', 'archive', 'chat-reply'];
 const pos = argv.filter(a => !a.startsWith('--') && !a.includes('${') && !/^\$\w+$/.test(a));
 const cmd = COMMANDS.includes(pos[0]) ? pos.shift() : 'start';
 const DATA = repoDataDir(repo);
@@ -81,8 +86,17 @@ else if (cmd === 'url' || cmd === 'status') {
 } else if (cmd === 'ask') {
   const sj = await current(); if (!sj) { console.error('Matt Skills UI is not running.'); process.exit(1); }
   const q = pos.join(' ').trim(); if (!q) { console.error('Usage: ask "<question>" [--rec "..."] [--options "a|b"] [--ref <ticket>]'); process.exit(1); }
-  const r = await api(sj, '/api/questions', { method: 'POST', body: { q, rec: rec === true ? '' : rec, opts: typeof options === 'string' ? options.split('|').map(s => s.trim()).filter(Boolean) : [], ref: ref === true ? '' : ref } });
+  const r = await api(sj, '/api/questions', { method: 'POST', body: { q, rec: rec === true ? '' : rec, opts: typeof options === 'string' ? options.split('|').map(s => s.trim()).filter(Boolean) : [], ref: ref === true ? '' : ref, session: session === true ? null : session } });
   console.log(`Posted to the board as ${r.id}. The answer arrives through the board listener.`);
+} else if (cmd === 'archive') {
+  const sj = await current(); if (!sj) { console.error('Matt Skills UI is not running.'); process.exit(1); }
+  const r = await api(sj, '/api/archive', { method: 'POST', body: { via: 'archived by hand' } });
+  console.log(`Archived ${r.archived} pending question${r.archived === 1 ? '' : 's'}. They stay in the board's history.`);
+} else if (cmd === 'chat-reply') {
+  // Silent on stdout: a UserPromptSubmit hook's output would be added to the chat.
+  const text = String(hookIn.prompt || '').trim(), sj = text && await current().catch(() => null);
+  if (sj) await api(sj, '/api/chat-answer', { method: 'POST', body: { text, session: hookIn.session_id || null } }).catch(() => {});
+  process.exit(0);
 } else if (cmd === 'listen') {
   // One stdout line per board message. Exits when the server stops. Meant for the Monitor tool.
   let misses = 0;

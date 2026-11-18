@@ -59,7 +59,7 @@ export const projectSlug = dir => path.resolve(dir).replace(/[^a-zA-Z0-9]/g, '-'
 export class Sessions {
   constructor({ repo, dataDir, cliPath, onChange }) {
     this.repo = repo; this.dataDir = dataDir; this.cliPath = cliPath; this.onChange = onChange;
-    this.list = []; this.procs = new Map(); this.questions = []; this.outbox = []; this.seq = 0; this.delivered = 0; this.waiters = new Set();
+    this.list = []; this.procs = new Map(); this.questions = []; this.history = []; this.outbox = []; this.seq = 0; this.delivered = 0; this.waiters = new Set();
     this.main = { id: 'main', name: 'Main session', kind: 'main', st: 'unknown', ctx: null, doing: '', sessionId: null, lastListen: 0, log: [] };
     this.file = path.join(dataDir, 'sessions.json');
   }
@@ -69,19 +69,24 @@ export class Sessions {
     const live = s => ['running', 'waiting', 'starting'].includes(s.st), perTurn = s => !AGENTS[s.agent || 'claude']?.persistent && (s.sessionId || s.sessionFile);
     this.list = (saved.sessions || []).map(s => !live(s) ? s : perTurn(s) ? { ...s, st: 'waiting', doing: s.st === 'waiting' ? s.doing : 'The board restarted mid-turn; reply to continue', queue: [] } : { ...s, st: 'ended' });
     this.questions = (saved.questions || []).filter(q => q.from === 'main' || this.list.some(s => s.id === q.from && s.st === 'waiting'));
+    this.history = saved.history || []; this.main.log = saved.mainLog || [];
     this.outbox = saved.outbox || []; this.seq = saved.seq || 0; this.delivered = saved.delivered ?? this.seq;
     if (saved.mainSessionId) this.main.sessionId = saved.mainSessionId;
     if (saved.mainHost) this.main.host = saved.mainHost;
   }
   save() {
     clearTimeout(this._t);
-    this._t = setTimeout(() => writeJson(this.file, { sessions: this.list.map(s => ({ ...s, log: s.log.slice(-200) })), questions: this.questions, outbox: this.outbox.slice(-100), seq: this.seq, delivered: this.delivered, mainSessionId: this.main.sessionId, mainHost: this.main.host }).catch(() => {}), 300);
+    this._t = setTimeout(() => writeJson(this.file, { sessions: this.list.map(s => ({ ...s, log: s.log.slice(-200) })), questions: this.questions, history: this.history.slice(-1000), mainLog: this.main.log.slice(-200), outbox: this.outbox.slice(-100), seq: this.seq, delivered: this.delivered, mainSessionId: this.main.sessionId, mainHost: this.main.host }).catch(() => {}), 300);
   }
   changed() { this.save(); this.onChange?.(); }
   setMain(sessionId, host) {
     const real = v => v && typeof v === 'string' && !v.includes('$') && !v.includes('<');
     if (real(host)) this.main.host = host.toLowerCase();
-    if (real(sessionId)) { this.main.sessionId = sessionId; if (!real(host)) this.main.host = 'claude'; }
+    if (real(sessionId)) {
+      // A new main session (startup, /clear) leaves the old one's questions unanswered: archive them, keep history.
+      if (sessionId !== this.main.sessionId) this.closeMain(q => q.session !== sessionId, { status: 'archived', via: 'new session' });
+      this.main.sessionId = sessionId; if (!real(host)) this.main.host = 'claude';
+    }
     if (real(host) || real(sessionId)) this.changed();
   }
   refreshMain() {
@@ -122,17 +127,39 @@ export class Sessions {
   }
 
   // ---------- questions ----------
-  addQuestion({ from = 'main', q, rec = '', opts = [], ref = '' }) {
+  addQuestion({ from = 'main', q, rec = '', opts = [], ref = '', session = null }) {
     const id = 'q' + randomUUID().slice(0, 8);
+    session = from === 'main' ? (session || this.main.sessionId || null) : null;
+    if (from === 'main') {
+      // The Stop hook may post the same question again: keep one pending copy, and don't re-ask one this session already answered.
+      const same = x => x.q === q && (x.session || null) === session;
+      const dup = this.questions.find(x => x.from === 'main' && same(x)) || this.history.find(x => x.status === 'answered' && same(x));
+      if (dup) return dup.id;
+    }
     this.questions = this.questions.filter(x => !(x.from === from && from !== 'main'));
-    this.questions.push({ id, from, skill: from === 'main' ? 'main session' : (this.list.find(s => s.id === from)?.skill || 'agent'), q, rec, opts, ref, at: new Date().toISOString() });
+    this.questions.push({ id, from, skill: from === 'main' ? 'main session' : (this.list.find(s => s.id === from)?.skill || 'agent'), q, rec, opts, ref, session, at: new Date().toISOString() });
     this.changed(); return id;
+  }
+  /** Move main-session questions matching `pick` from pending to history (answered or archived), never deleting them. */
+  closeMain(pick, { status, answer = null, via }) {
+    const gone = this.questions.filter(x => x.from === 'main' && pick(x));
+    if (!gone.length) return 0;
+    const at = new Date().toISOString();
+    this.questions = this.questions.filter(x => !gone.includes(x));
+    this.history.push(...gone.map(x => ({ ...x, status, answer, via, closedAt: at })));
+    this.main.log.push({ w: 'sys', t: status === 'answered' ? `${gone.length} question${gone.length > 1 ? 's' : ''} answered ${via}: ${answer}` : `${gone.length} question${gone.length > 1 ? 's' : ''} archived (${via})` });
+    this.changed(); return gone.length;
+  }
+  /** The user replied in the main chat: that reply answers the session's open board questions. */
+  answerFromChat(text, session = null) {
+    const mine = x => !session || x.session === session || (!x.session && session === this.main.sessionId);
+    return this.closeMain(mine, { status: 'answered', answer: text, via: 'in chat' });
   }
   answer(qid, answer) {
     const q = this.questions.find(x => x.id === qid); if (!q) return false;
     this.questions = this.questions.filter(x => x.id !== qid);
     const text = answer === '__rec' ? `Go with your recommendation: ${q.rec}` : answer;
-    if (q.from === 'main') this.pushOutbox(`Answer to “${q.q}”: ${text}`);
+    if (q.from === 'main') { this.history.push({ ...q, status: 'answered', answer: text, via: 'on the board', closedAt: new Date().toISOString() }); this.pushOutbox(`Answer to “${q.q}”: ${text}`); }
     else this.send(q.from, text);
     this.changed(); return true;
   }

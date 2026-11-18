@@ -1,0 +1,16 @@
+{
+  "description": "Keep the board's questions in step with the chat: a reply typed in the chat answers the open board questions from the last turn.",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/skills/matt-skills-ui/server/cli.mjs\" chat-reply",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

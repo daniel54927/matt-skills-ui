@@ -62,3 +62,33 @@ test('per-turn session: question, answer resumes, queue, stop, failed turn', asy
   ss.send(s.id, 'back again');
   await until(() => s.st === 'waiting' && s.log.at(-1).t.startsWith('resumed: back again'));
 });
+
+test('main-session questions stay in step with the chat: chat replies, board answers, new sessions', async () => {
+  const tmp = mkdtempSync(path.join(os.tmpdir(), 'msu-sync-'));
+  const ss = new Sessions({ repo: tmp, dataDir: tmp, cliPath: 'cli.mjs' });
+  ss.setMain('s1', 'claude');
+  const a = ss.addQuestion({ q: 'Q1 - Version?' }), b = ss.addQuestion({ q: 'Q2 - Name?' });
+  assert.equal(ss.addQuestion({ q: 'Q1 - Version?' }), a, 'a re-posted pending question is not duplicated');
+  // Board answer: goes to the chat once, lands in history, and is not re-asked this session.
+  assert.ok(ss.answer(a, '18'));
+  assert.match(ss.outbox.at(-1).text, /Answer to “Q1 - Version\?”: 18/);
+  assert.equal(ss.addQuestion({ q: 'Q1 - Version?' }), a);
+  assert.deepEqual(ss.questions.map(q => q.id), [b]);
+  // Chat reply: answers the open questions of that session, and pushes nothing to the chat.
+  const sent = ss.outbox.length;
+  assert.equal(ss.answerFromChat('2a', 'other-session'), 0);
+  assert.equal(ss.answerFromChat('2a', 's1'), 1);
+  assert.equal(ss.questions.length, 0); assert.equal(ss.outbox.length, sent);
+  assert.deepEqual(ss.history.map(h => [h.q, h.status, h.answer, h.via]), [['Q1 - Version?', 'answered', '18', 'on the board'], ['Q2 - Name?', 'answered', '2a', 'in chat']]);
+  // New session (/clear or startup): the old session's leftovers are archived, not deleted; the same session id keeps them (compact, resume).
+  ss.addQuestion({ q: 'Q3 - Left open?' });
+  ss.setMain('s1', 'claude'); assert.equal(ss.questions.length, 1);
+  ss.setMain('s2', 'claude'); assert.equal(ss.questions.length, 0);
+  assert.deepEqual(ss.history.at(-1), { ...ss.history.at(-1), q: 'Q3 - Left open?', status: 'archived', via: 'new session' });
+  ss.addQuestion({ q: 'Q1 - Version?' }); assert.equal(ss.questions.length, 1, 'a new session may ask again');
+  assert.equal(ss.closeMain(() => true, { status: 'archived', via: 'archived by hand' }), 1);
+  // History and the main log survive a board restart.
+  ss.save(); await new Promise(r => setTimeout(r, 500));
+  const again = new Sessions({ repo: tmp, dataDir: tmp, cliPath: 'cli.mjs' }); await again.load();
+  assert.equal(again.history.length, 4); assert.ok(again.main.log.some(l => /archived/.test(l.t)));
+});

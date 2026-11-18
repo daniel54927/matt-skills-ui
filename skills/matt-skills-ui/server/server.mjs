@@ -87,7 +87,9 @@ const server = http.createServer(async (req, res) => {
     }
     if (p === '/api/answer' && POST) { const b = await body(req); return json(res, 200, { ok: sessions.answer(b.qid, String(b.answer || '')) }); }
     if (p === '/api/stop-session' && POST) { const b = await body(req); sessions.stop(b.id); return json(res, 200, { ok: true }); }
-    if (p === '/api/questions' && POST) { const b = await body(req); if (!b.q) return json(res, 400, { error: 'q required' }); return json(res, 200, { ok: true, id: sessions.addQuestion({ from: 'main', q: String(b.q), rec: String(b.rec || ''), opts: [].concat(b.opts || []).map(String), ref: String(b.ref || '') }) }); }
+    if (p === '/api/questions' && POST) { const b = await body(req); if (!b.q) return json(res, 400, { error: 'q required' }); return json(res, 200, { ok: true, id: sessions.addQuestion({ from: 'main', q: String(b.q), rec: String(b.rec || ''), opts: [].concat(b.opts || []).map(String), ref: String(b.ref || ''), session: b.session ? String(b.session) : null }) }); }
+    if (p === '/api/chat-answer' && POST) { const b = await body(req); if (!b.text) return json(res, 400, { error: 'text required' }); return json(res, 200, { ok: true, answered: sessions.answerFromChat(String(b.text), b.session ? String(b.session) : null) }); }
+    if (p === '/api/archive' && POST) { const b = await body(req); return json(res, 200, { ok: true, archived: sessions.closeMain(() => true, { status: 'archived', via: String(b.via || 'archived by hand') }) }); }
     if (p === '/api/outbox') { const msgs = await sessions.waitOutbox(url.searchParams.get('wait') ? 25000 : 0); broadcast(); return json(res, 200, { messages: msgs }); }
     if (p === '/api/main' && POST) { const b = await body(req); sessions.setMain(b.session, b.host); return json(res, 200, { ok: true }); }
     if (p === '/api/theme' && POST) { const b = await body(req); await writeThemeOverride(b.theme || null); broadcast(); return json(res, 200, { ok: true, theme: await readTheme() }); }
