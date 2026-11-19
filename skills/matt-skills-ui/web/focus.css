@@ -10,11 +10,20 @@
 [data-theme=B] #fx button{color:var(--accent-fg)}
 [data-theme=B] #fx button.on{background:var(--accent-fg);color:var(--accent)}
 
-/* ---- any focus: only the top bar and one area stay ---- */
-html[data-focus] .app{grid-template-columns:minmax(0,1fr);grid-template-rows:var(--fx-mast,64px) minmax(0,1fr);grid-template-areas:"mast" "main"}
+/* ---- any focus: only the top bar and one area stay ----
+   .app.wide is listed too: the board's "hide details" toggle (]) adds it, and its theme rules would
+   otherwise win and squeeze everything into the first column.
+   Top bar heights match each theme's Dashboard (style.css), short screens included. Terminal (B)
+   moves its bottom bar to the top in focus, so the buttons sit where they do in every other theme. */
+html[data-focus] .app,html[data-focus] .app.wide{grid-template-columns:minmax(0,1fr);grid-template-rows:var(--fx-mast,64px) minmax(0,1fr);grid-template-areas:"mast" "main"}
 html[data-focus][data-theme=B] .app{--fx-mast:30px}
 html[data-focus][data-theme=C] .app{--fx-mast:58px}
 html[data-focus][data-theme=D] .app{--fx-mast:68px}
+@media (max-height:860px){
+  html[data-focus][data-theme=A] .app{--fx-mast:56px}
+  html[data-focus][data-theme=C] .app{--fx-mast:54px}
+  html[data-focus][data-theme=D] .app{--fx-mast:60px}
+}
 html[data-focus] .nav,html[data-focus] .notes,html[data-focus] .dock,html[data-focus] #rmy-grip{display:none!important}
 html[data-focus] .mast > :not(.brand):not(.sp):not(#fx){display:none!important}
 
@@ -26,5 +35,5 @@ html[data-focus=questions] #rmy{display:flex}
 /* ---- Chart focus: the middle box fills the screen, details open on the right on a ticket click ----
    No slide animation on purpose: the board rebuilds the panel every few seconds and it would replay. */
 #fx-x{display:none}
-html[data-focus=chart][data-fdet] .notes{display:block!important;position:fixed;z-index:80;top:var(--fx-top,64px);right:0;bottom:0;width:min(420px,92vw);background:var(--bg2);border-left:1px solid var(--line2);box-shadow:-18px 0 40px rgb(0 0 0 / .18);animation:none!important;opacity:1!important}
-html[data-focus=chart][data-fdet] #fx-x{display:inline-flex;margin:0 0 14px auto}
+html[data-focus=chart][data-focus-details] .notes{display:block!important;position:fixed;z-index:80;top:var(--fx-top,64px);right:0;bottom:0;width:min(420px,92vw);background:var(--bg2);border-left:1px solid var(--line2);box-shadow:-18px 0 40px rgb(0 0 0 / .18);animation:none!important;opacity:1!important}
+html[data-focus=chart][data-focus-details] #fx-x{display:inline-flex;margin:0 0 14px auto}

@@ -45,10 +45,11 @@ function draw() {
   if (focus) { const t = panel.querySelector(`textarea[data-q="${focus}"]`); if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length); } }
 }
 
-// After the last answer, go to Chart focus to see the progress.
+// Send an answer. draw() reports the new count; focus.js moves to Chart after the last one.
 const answer = (id, v) => api('/api/answer', { qid: id, answer: v }).then(() => {
-  delete drafts[id]; QS = QS.filter(q => q.id !== id); draw();
-  if (!QS.length && window.msuFocus?.get() === 'questions') window.msuFocus.set('chart');
+  delete drafts[id];
+  QS = QS.filter(q => q.id !== id);
+  draw();
 }, e => alert('Not sent: ' + e.message));
 panel.addEventListener('input', e => { if (e.target.dataset.q) drafts[e.target.dataset.q] = e.target.value; });
 panel.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey) && e.target.dataset.q) { const v = e.target.value.trim(); if (v) answer(e.target.dataset.q, v); } });
@@ -61,6 +62,16 @@ panel.addEventListener('click', e => { const b = e.target.closest('button'); if 
 
 // ---- keep in step with the board; a new question only changes the count, it never moves you ----
 const same = (a, b) => a.length === b.length && a.every((q, i) => q.id === b[i].id);
-async function poll() { try { const s = await api('/api/state'); const n = s.questions || []; if (!same(n, QS) && (Date.now() > hold || n.length < QS.length)) { QS = n; draw(); } } catch {} }
+// The count on the Questions button always follows the board. The cards themselves hold still for
+// a minute after a Highlight click, so Speechify keeps its selection.
+async function poll() {
+  try {
+    const s = await api('/api/state');
+    const n = s.questions || [];
+    window.msuFocus?.count(n.length);
+    const holding = Date.now() < hold && n.length >= QS.length;
+    if (!same(n, QS) && !holding) { QS = n; draw(); }
+  } catch {}
+}
 QS = window.__STATE__?.questions || [];
 poll(); setInterval(poll, 2500); draw();

@@ -17,25 +17,28 @@ let picked;
 function chrome() {
   if (picked !== undefined) return picked;
   if (process.env.MSU_CHROME) return (picked = process.env.MSU_CHROME);
-  const cache = path.join(os.homedir(), '.cache/ms-playwright');
-  for (const d of existsSync(cache) ? readdirSync(cache).filter(d => d.startsWith('chromium_headless_shell-')).sort().reverse() : [])
-    for (const sub of readdirSync(path.join(cache, d))) {
-      const b = path.join(cache, d, sub, 'chrome-headless-shell');
-      if (existsSync(b) && spawnSync(b, ['--version'], { timeout: 10000 }).status === 0) return (picked = b);
-    }
+  for (const cache of [path.join(os.homedir(), 'Library/Caches/ms-playwright'), path.join(os.homedir(), '.cache/ms-playwright')])
+    for (const d of existsSync(cache) ? readdirSync(cache).filter(d => d.startsWith('chromium_headless_shell-')).sort().reverse() : [])
+      for (const sub of readdirSync(path.join(cache, d))) {
+        const b = path.join(cache, d, sub, 'chrome-headless-shell');
+        if (existsSync(b) && spawnSync(b, ['--version'], { timeout: 10000 }).status === 0) return (picked = b);
+      }
   return (picked = existsSync(WIN_CHROME) ? WIN_CHROME : null);
 }
+const onWindows = () => chrome().endsWith('.exe');
 // A fresh, empty browser profile every load, so nothing is remembered between modes.
 function profile() {
-  if (!chrome().endsWith('.exe')) return mkdtempSync(path.join(os.tmpdir(), 'msu-focus-'));
+  if (!onWindows()) return mkdtempSync(path.join(os.tmpdir(), 'msu-focus-'));
   const winTemp = spawnSync('cmd.exe', ['/c', 'echo', '%TEMP%'], { encoding: 'utf8', cwd: '/mnt/c' }).stdout.trim();
   const linux = mkdtempSync(path.join(spawnSync('wslpath', [winTemp], { encoding: 'utf8' }).stdout.trim(), 'msu-focus-'));
   return spawnSync('wslpath', ['-w', linux], { encoding: 'utf8' }).stdout.trim();
 }
 // The page as the browser left it after its scripts ran.
 function dom(url) {
-  const head = chrome().endsWith('.exe') ? ['--headless=new'] : [];
-  const r = spawnSync(chrome(), [...head, '--disable-gpu', `--user-data-dir=${profile()}`, '--window-size=1440,900', '--timeout=8000', '--dump-dom', url], { encoding: 'utf8', timeout: 60000, cwd: '/mnt/c' });
+  // A full Chrome needs --headless=new; the headless shell is headless already.
+  // Windows Chrome runs from a Windows folder (/mnt/c), anything else from where we are.
+  const head = chrome().includes('headless-shell') ? [] : ['--headless=new'];
+  const r = spawnSync(chrome(), [...head, '--disable-gpu', `--user-data-dir=${profile()}`, '--window-size=1440,900', '--timeout=8000', '--dump-dom', url], { encoding: 'utf8', timeout: 60000, ...(onWindows() ? { cwd: '/mnt/c' } : {}) });
   return r.stdout || '';
 }
 const htmlTag = page => (page.match(/<html[^>]*>/) || [''])[0];

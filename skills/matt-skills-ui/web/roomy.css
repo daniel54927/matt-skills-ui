@@ -12,7 +12,7 @@
 #rmy-grip:hover::after{opacity:1;background:var(--accent)}
 
 /* ---- the questions view: fills the screen under the top bar, one calm column ---- */
-#rmy{position:fixed;z-index:50;top:var(--fx-top,64px);left:0;right:0;bottom:0;flex-direction:column;background:var(--bg);color:var(--fg);font:calc(16px * var(--rmy-fs,1))/1.8 system-ui,-apple-system,"Segoe UI",sans-serif}
+#rmy{position:fixed;z-index:50;top:var(--fx-top,64px);left:0;right:0;bottom:0;flex-direction:column;background:var(--bg);color:var(--fg);font:calc(16px * var(--rmy-fs,1))/1.8 var(--font,system-ui)}
 #rmy *{box-sizing:border-box;letter-spacing:normal;text-transform:none}
 #rmy .rmy-wrap{display:flex;flex-direction:column;min-height:0;height:100%;width:100%;max-width:960px;margin:0 auto}
 #rmy header{display:flex;align-items:center;gap:14px;padding:26px 30px 10px}
@@ -34,7 +34,7 @@
 #rmy button:hover{border-color:var(--fg);background:var(--bg3)}
 #rmy button.rmy-go{background:var(--fg);border-color:var(--fg);color:var(--bg);font-weight:600}
 #rmy button.rmy-go:hover{opacity:.88}
-#rmy textarea{width:100%;min-height:170px;resize:vertical;padding:16px 18px;border-radius:var(--r,10px);border:1px solid var(--line2);background:var(--bg);color:var(--fg);font:1.06em/1.8 system-ui,sans-serif;margin-bottom:14px}
+#rmy textarea{width:100%;min-height:170px;resize:vertical;padding:16px 18px;border-radius:var(--r,10px);border:1px solid var(--line2);background:var(--bg);color:var(--fg);font:1.06em/1.8 var(--font,system-ui);margin-bottom:14px}
 #rmy textarea:focus{outline:2px solid var(--fg);border-color:transparent}
 #rmy .rmy-send{display:flex;gap:12px;align-items:center}
 #rmy .rmy-hint{font-size:.81em;color:var(--fg3)}
