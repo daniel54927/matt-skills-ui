@@ -1,0 +1,30 @@
+/* Focus mode add-on for Matt Skills UI (Dan, 2026-11-19). See focus.js.
+   Colors and shapes come from the theme (var(--bg), var(--fg), .seg, .btn), so every theme keeps its own look. */
+
+/* ---- the strip in the top bar ---- */
+#fx{flex:none}
+#fx button{font-size:12.5px;font-weight:600;padding:5px 14px}
+#fx button b{display:inline-block;min-width:18px;margin-left:4px;padding:0 5px;border-radius:99px;background:var(--s-you);color:var(--bg);font-size:11px;text-align:center}
+#fx button.on b{background:var(--bg);color:var(--fg)}
+[data-theme=B] #fx{border-color:var(--accent-fg);height:auto;padding:0;margin:0 8px}
+[data-theme=B] #fx button{color:var(--accent-fg)}
+[data-theme=B] #fx button.on{background:var(--accent-fg);color:var(--accent)}
+
+/* ---- any focus: only the top bar and one area stay ---- */
+html[data-focus] .app{grid-template-columns:minmax(0,1fr);grid-template-rows:var(--fx-mast,64px) minmax(0,1fr);grid-template-areas:"mast" "main"}
+html[data-focus][data-theme=B] .app{--fx-mast:30px}
+html[data-focus][data-theme=C] .app{--fx-mast:58px}
+html[data-focus][data-theme=D] .app{--fx-mast:68px}
+html[data-focus] .nav,html[data-focus] .notes,html[data-focus] .dock,html[data-focus] #rmy-grip{display:none!important}
+html[data-focus] .mast > :not(.brand):not(.sp):not(#fx){display:none!important}
+
+/* ---- Questions focus: the questions view (roomy.js) fills the space under the top bar ---- */
+html[data-focus=questions] .main{display:none}
+#rmy{display:none}
+html[data-focus=questions] #rmy{display:flex}
+
+/* ---- Chart focus: the middle box fills the screen, details open on the right on a ticket click ----
+   No slide animation on purpose: the board rebuilds the panel every few seconds and it would replay. */
+#fx-x{display:none}
+html[data-focus=chart][data-fdet] .notes{display:block!important;position:fixed;z-index:80;top:var(--fx-top,64px);right:0;bottom:0;width:min(420px,92vw);background:var(--bg2);border-left:1px solid var(--line2);box-shadow:-18px 0 40px rgb(0 0 0 / .18);animation:none!important;opacity:1!important}
+html[data-focus=chart][data-fdet] #fx-x{display:inline-flex;margin:0 0 14px auto}
